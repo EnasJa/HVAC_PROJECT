@@ -1,0 +1,12 @@
+# HVAC IoT Monitoring System - Python Dependencies
+
+# Web Framework
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+
+# MQTT Client for AWS IoT
+paho-mqtt==1.6.1
+
+# JSON and Data Processing
+python-dateutil==2.8.2
+

@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏢 HVAC Smart Building Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-dark: #1e293b;      /* Dark slate blue */
+            --secondary-dark: #374151;    /* Dark gray */
+            --accent-dark: #0f172a;       /* Almost black */
+            --text-light: #f8fafc;        /* Light text */
+            --text-muted: #94a3b8;        /* Muted text */
+            --border-color: #334155;      /* Border color */
+            --success: #10b981;           /* Success green */
+            --warning: #f59e0b;           /* Warning amber */
+            --danger: #ef4444;            /* Danger red */
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--accent-dark);
+            color: var(--text-light);
+            min-height: 100vh;
+            padding: 24px;
+            line-height: 1.6;
+        }
+
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 32px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--text-light), var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            border: 1px solid var(--border-color);
+            background: var(--primary-dark);
+        }
+
+        .connected {
+            color: var(--success);
+            border-color: var(--success);
+        }
+
+        .disconnected {
+            color: var(--danger);
+            border-color: var(--danger);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: var(--primary-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--success), var(--warning));
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--text-muted);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .stat-icon {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+            opacity: 0.8;
+        }
+
+        .stat-number {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: var(--text-light);
+            margin: 12px 0;
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .zones-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .zone-card {
+            background: var(--primary-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .zone-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--text-muted);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .zone-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .zone-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-light);
+        }
+
+        .zone-status {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-online {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+
+        .status-offline {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .sensor-item {
+            background: var(--secondary-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        .sensor-item:hover {
+            border-color: var(--text-muted);
+        }
+
+        .sensor-icon {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            opacity: 0.8;
+        }
+
+        .sensor-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-light);
+            margin: 8px 0;
+        }
+
+        .sensor-label {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .air-quality {
+            grid-column: span 2;
+            margin-top: 16px;
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .excellent { 
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+        .good { 
+            background: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+            border: 1px solid #22c55e;
+        }
+        .moderate { 
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+            border: 1px solid var(--warning);
+        }
+        .poor { 
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        .alerts-section {
+            background: var(--primary-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 40px;
+        }
+
+        .alerts-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .alerts-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-light);
+        }
+
+        .alert-item {
+            background: var(--secondary-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 12px;
+            border-left: 4px solid;
+            transition: all 0.2s ease;
+        }
+
+        .alert-item:hover {
+            border-color: var(--text-muted);
+        }
+
+        .alert-critical {
+            border-left-color: var(--danger);
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .alert-warning {
+            border-left-color: var(--warning);
+            background: rgba(245, 158, 11, 0.05);
+        }
+
+        .alert-info {
+            border-left-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .alert-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+            font-weight: 500;
+        }
+
+        .chart-container {
+            background: var(--primary-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 40px;
+        }
+
+        .chart-header {
+            text-align: center;
+            margin-bottom: 24px;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-light);
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .no-data {
+            text-align: center;
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 40px 20px;
+            background: var(--secondary-dark);
+            border-radius: 12px;
+            border: 1px dashed var(--border-color);
+        }
+
+        .last-update {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            font-weight: 500;
+            padding: 20px;
+            background: var(--primary-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+        }
+
+        /* Chart.js dark theme customization */
+        .chart-container canvas {
+            background: var(--secondary-dark) !important;
+            border-radius: 8px;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--accent-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            body {
+                padding: 16px;
+            }
+            
+            .sensor-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .zones-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .zone-card, .stat-card, .alerts-section, .chart-container {
+                padding: 24px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .zone-header {
+                flex-direction: column;
+                gap: 12px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="header">
+            <h1>🏢 HVAC Smart Building Dashboard</h1>
+            <div id="connectionStatus" class="connection-status disconnected">
+                🔴 Disconnected
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-number" id="totalMessages">0</div>
+                <div class="stat-label">Total Messages</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🏢</div>
+                <div class="stat-number" id="connectedZones">0</div>
+                <div class="stat-label">Connected Zones</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⚠️</div>
+                <div class="stat-number" id="activeAlerts">0</div>
+                <div class="stat-label">Active Alerts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⏰</div>
+                <div class="stat-number" id="lastUpdate">--:--</div>
+                <div class="stat-label">Last Update</div>
+            </div>
+        </div>
+
+        <div class="zones-grid" id="zonesGrid">
+            <!-- Zones will be dynamically populated -->
+        </div>
+
+        <div class="alerts-section">
+            <div class="alerts-header">
+                <h2>🚨 Recent Alerts</h2>
+                <span id="alertsCount">0 alerts</span>
+            </div>
+            <div id="alertsList">
+                <div class="no-data">No recent alerts</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-header">
+                📈 Live Temperature Data
+                <button onclick="forceChartRefresh()" style="margin-left: 20px; padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">
+                    🔄 Refresh Chart
+                </button>
+            </div>
+            <div style="position: relative; height: 400px;">
+                <canvas id="temperatureChart" width="400" height="400"></canvas>
+            </div>
+            <div id="chartDebug" style="color: #94a3b8; font-size: 0.8rem; margin-top: 10px; text-align: center;">
+                Chart status: Initializing...
+            </div>
+        </div>
+
+        <div class="last-update">
+            Last updated: <span id="lastUpdateTime">--</span>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        // Global chart data object
+        let chartData = {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Lobby',
+                    data: [],
+                    borderColor: '#10b981',
+                    backgroundColor: '#10b981',
+                    fill: false,
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointRadius: 8,
+                    pointHoverRadius: 12,
+                    pointBorderWidth: 2,
+                    pointBackgroundColor: '#10b981',
+                    pointBorderColor: '#1e293b'
+                },
+                {
+                    label: 'Office Floor 1',
+                    data: [],
+                    borderColor: '#f59e0b',
+                    backgroundColor: '#f59e0b',
+                    fill: false,
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointRadius: 8,
+                    pointHoverRadius: 12,
+                    pointBorderWidth: 2,
+                    pointBackgroundColor: '#f59e0b',
+                    pointBorderColor: '#1e293b'
+                },
+                {
+                    label: 'Office Floor 2',
+                    data: [],
+                    borderColor: '#3b82f6',
+                    backgroundColor: '#3b82f6',
+                    fill: false,
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointRadius: 8,
+                    pointHoverRadius: 12,
+                    pointBorderWidth: 2,
+                    pointBackgroundColor: '#3b82f6',
+                    pointBorderColor: '#1e293b'
+                },
+                {
+                    label: 'Conference Room',
+                    data: [],
+                    borderColor: '#8b5cf6',
+                    backgroundColor: '#8b5cf6',
+                    fill: false,
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointRadius: 8,
+                    pointHoverRadius: 12,
+                    pointBorderWidth: 2,
+                    pointBackgroundColor: '#8b5cf6',
+                    pointBorderColor: '#1e293b'
+                }
+            ]
+        };
+
+        // Initialize chart - SIMPLE VERSION
+        function initChart() {
+            console.log('🔧 Starting SIMPLE chart initialization...');
+            
+            const canvas = document.getElementById('temperatureChart');
+            const ctx = canvas.getContext('2d');
+            
+            try {
+                temperatureChart = new Chart(ctx, {
+                    type: 'line',
+                    data: chartData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                labels: { color: '#f8fafc' }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                min: 15,
+                                max: 30,
+                                ticks: { color: '#94a3b8' },
+                                grid: { color: 'rgba(148, 163, 184, 0.1)' }
+                            },
+                            x: {
+                                ticks: { color: '#94a3b8' },
+                                grid: { color: 'rgba(148, 163, 184, 0.1)' }
+                            }
+                        }
+                    }
+                });
+                
+                console.log('✅ Chart created successfully');
+                document.getElementById('chartDebug').textContent = 'Chart ready ✅';
+                
+                // Add real data immediately
+                addTestDataToChart();
+                
+                return true;
+                
+            } catch (error) {
+                console.error('❌ Chart creation failed:', error);
+                document.getElementById('chartDebug').textContent = 'Chart failed: ' + error.message;
+                return false;
+            }
+        }
+        
+        // Add test data to show chart works
+        function addTestDataToChart() {
+            // DON'T ADD ANY TEST DATA
+            // Let the real data flow from the simulator
+            console.log('📊 Chart ready for real data from simulator');
+            document.getElementById('chartDebug').textContent = 'Chart ready - waiting for live sensor data...';
+        }
+
+        // Force chart refresh function
+        function forceChartRefresh() {
+            console.log('🔄 FORCE REFRESH - CLEARING ALL DATA');
+            document.getElementById('chartDebug').textContent = 'Clearing chart for real data...';
+            
+            // Clear all data completely
+            chartData.labels = [];
+            chartData.datasets.forEach(dataset => {
+                dataset.data = [];
+            });
+            
+            if (temperatureChart) {
+                temperatureChart.data = chartData;
+                temperatureChart.update();
+            }
+            
+            // Request fresh data from server
+            socket.emit('request_data');
+            console.log('✅ Chart cleared and requesting live data');
+        }
+
+        // SIMPLE chart update function
+        function updateChart(zone, data) {
+            console.log(`🚀 UPDATING CHART: ${zone} = ${data.temperature_celsius}°C`);
+            
+            if (!temperatureChart) {
+                console.log('⚠️ Chart not ready, initializing...');
+                initChart();
+                return;
+            }
+            
+            const zoneIndex = {
+                'lobby': 0,
+                'office_floor_1': 1,
+                'office_floor_2': 2,
+                'conference_room': 3
+            };
+            
+            const index = zoneIndex[zone];
+            if (index === undefined) {
+                console.log('❌ Unknown zone:', zone);
+                return;
+            }
+            
+            const time = new Date(data.timestamp).toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            // Clear fake data on first real update
+            if (chartData.labels.length === 3 && chartData.labels[0].includes(':')) {
+                // Only clear if we have old test data
+                let hasOldData = false;
+                for (let i = 0; i < chartData.datasets.length; i++) {
+                    if (chartData.datasets[i].data.length > 0) {
+                        const firstValue = chartData.datasets[i].data[0];
+                        if (firstValue === 21.3 || firstValue === 24.2 || firstValue === 22.5 || firstValue === 23.9) {
+                            hasOldData = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (hasOldData) {
+                    console.log('🗑️ Clearing old test data');
+                    chartData.labels = [];
+                    chartData.datasets.forEach(dataset => {
+                        dataset.data = [];
+                    });
+                }
+            }
+            
+            // Add new data point
+            chartData.datasets[index].data.push(data.temperature_celsius);
+            
+            // Add time label for ANY zone (not just lobby) for faster updates
+            if (!chartData.labels.includes(time)) {
+                chartData.labels.push(time);
+                
+                // Keep only last 20 points for better visibility
+                if (chartData.labels.length > 20) {
+                    chartData.labels.shift();
+                    chartData.datasets.forEach(dataset => {
+                        if (dataset.data.length > 20) {
+                            dataset.data.shift();
+                        }
+                    });
+                }
+            }
+            
+            // Sync all datasets to have same length as labels
+            const maxLength = chartData.labels.length;
+            chartData.datasets.forEach((dataset, idx) => {
+                // Trim excess data
+                while (dataset.data.length > maxLength) {
+                    dataset.data.shift();
+                }
+                // Fill missing data with null
+                while (dataset.data.length < maxLength && idx !== index) {
+                    dataset.data.push(null);
+                }
+            });
+            
+            // Update chart
+            temperatureChart.data = chartData;
+            temperatureChart.update('none');
+            
+            console.log(`✅ Chart updated: ${zone} = ${data.temperature_celsius}°C at ${time}`);
+            document.getElementById('chartDebug').textContent = `Live: ${zone} = ${data.temperature_celsius}°C at ${time}`;
+        }
+
+        // Zone name mapping
+        const zoneNames = {
+            'lobby': 'Lobby',
+            'office_floor_1': 'Office Floor 1',
+            'office_floor_2': 'Office Floor 2',
+            'conference_room': 'Conference Room'
+        };
+
+        // Update zone card
+        function updateZoneCard(zone, data) {
+            const zoneCard = document.getElementById(`zone-${zone}`);
+            if (!zoneCard) {
+                createZoneCard(zone, data);
+                return;
+            }
+
+            // Update sensor values
+            zoneCard.querySelector('.temperature .sensor-value').textContent = `${data.temperature_celsius}°C`;
+            zoneCard.querySelector('.humidity .sensor-value').textContent = `${data.humidity_percent}%`;
+            zoneCard.querySelector('.co2 .sensor-value').textContent = `${data.co2_ppm}`;
+            zoneCard.querySelector('.air-quality').textContent = `Air Quality: ${getAirQualityText(data.air_quality)}`;
+            zoneCard.querySelector('.air-quality').className = `air-quality ${data.air_quality}`;
+            zoneCard.querySelector('.zone-status').className = 'zone-status status-online';
+            zoneCard.querySelector('.zone-status').textContent = 'Online';
+        }
+
+        // Create zone card
+        function createZoneCard(zone, data) {
+            const zonesGrid = document.getElementById('zonesGrid');
+            const zoneCard = document.createElement('div');
+            zoneCard.className = 'zone-card';
+            zoneCard.id = `zone-${zone}`;
+            
+            zoneCard.innerHTML = `
+                <div class="zone-header">
+                    <div class="zone-name">${zoneNames[zone] || zone}</div>
+                    <div class="zone-status status-online">Online</div>
+                </div>
+                <div class="sensor-grid">
+                    <div class="sensor-item temperature">
+                        <div class="sensor-icon">🌡️</div>
+                        <div class="sensor-value">${data.temperature_celsius}°C</div>
+                        <div class="sensor-label">Temperature</div>
+                    </div>
+                    <div class="sensor-item humidity">
+                        <div class="sensor-icon">💧</div>
+                        <div class="sensor-value">${data.humidity_percent}%</div>
+                        <div class="sensor-label">Humidity</div>
+                    </div>
+                    <div class="sensor-item co2">
+                        <div class="sensor-icon">🫁</div>
+                        <div class="sensor-value">${data.co2_ppm}</div>
+                        <div class="sensor-label">CO₂ (PPM)</div>
+                    </div>
+                    <div class="sensor-item hvac">
+                        <div class="sensor-icon">❄️</div>
+                        <div class="sensor-value">${getHVACStatusText(data.hvac_status)}</div>
+                        <div class="sensor-label">HVAC Status</div>
+                    </div>
+                </div>
+                <div class="air-quality ${data.air_quality}">
+                    Air Quality: ${getAirQualityText(data.air_quality)}
+                </div>
+            `;
+            
+            zonesGrid.appendChild(zoneCard);
+        }
+
+        // Helper functions
+        function getAirQualityText(quality) {
+            const mapping = {
+                'excellent': 'Excellent',
+                'good': 'Good',
+                'moderate': 'Moderate',
+                'poor': 'Poor'
+            };
+            return mapping[quality] || quality;
+        }
+
+        function getHVACStatusText(status) {
+            const mapping = {
+                'cooling_high': 'Cooling High',
+                'heating': 'Heating',
+                'auto': 'Auto',
+                'off': 'Off'
+            };
+            return mapping[status] || status;
+        }
+
+        // Update statistics
+        function updateStats(stats) {
+            document.getElementById('totalMessages').textContent = stats.total_messages;
+            document.getElementById('connectedZones').textContent = stats.connected_zones;
+            document.getElementById('activeAlerts').textContent = stats.active_alerts;
+            
+            if (stats.last_update) {
+                const time = new Date(stats.last_update).toLocaleTimeString('en-US');
+                document.getElementById('lastUpdate').textContent = time;
+                document.getElementById('lastUpdateTime').textContent = new Date(stats.last_update).toLocaleString('en-US');
+            }
+        }
+
+        // Add alert to list
+        function addAlert(alert) {
+            const alertsList = document.getElementById('alertsList');
+            const noData = alertsList.querySelector('.no-data');
+            if (noData) {
+                noData.remove();
+            }
+
+            const alertItem = document.createElement('div');
+            alertItem.className = `alert-item alert-${alert.severity}`;
+            alertItem.innerHTML = `
+                <div><strong>${zoneNames[alert.zone] || alert.zone}:</strong> ${alert.message}</div>
+                <div class="alert-time">${new Date(alert.timestamp).toLocaleString('en-US')}</div>
+            `;
+            
+            alertsList.insertBefore(alertItem, alertsList.firstChild);
+            
+            // Keep only last 10 alerts visible
+            const alerts = alertsList.querySelectorAll('.alert-item');
+            if (alerts.length > 10) {
+                alerts[alerts.length - 1].remove();
+            }
+            
+            // Update alerts count
+            document.getElementById('alertsCount').textContent = `${alerts.length} alerts`;
+        }
+
+        // Socket event handlers
+        socket.on('connect', function() {
+            console.log('Connected to dashboard server');
+        });
+
+        socket.on('connection_status', function(data) {
+            const statusElement = document.getElementById('connectionStatus');
+            if (data.connected) {
+                statusElement.className = 'connection-status connected';
+                statusElement.textContent = '🟢 Connected';
+            } else {
+                statusElement.className = 'connection-status disconnected';
+                statusElement.textContent = '🔴 Disconnected';
+            }
+        });
+
+        socket.on('initial_data', function(data) {
+            console.log('Received initial data:', data);
+            
+            // Update connection status
+            const statusElement = document.getElementById('connectionStatus');
+            if (data.connected) {
+                statusElement.className = 'connection-status connected';
+                statusElement.textContent = '🟢 Connected';
+            } else {
+                statusElement.className = 'connection-status disconnected';
+                statusElement.textContent = '🔴 Disconnected';
+            }
+            
+            // Update statistics
+            updateStats(data.stats);
+            
+            // Update zones
+            Object.keys(data.sensors).forEach(zone => {
+                if (data.sensors[zone].latest) {
+                    updateZoneCard(zone, data.sensors[zone].latest);
+                }
+            });
+            
+            // Update alerts
+            const alertsList = document.getElementById('alertsList');
+            alertsList.innerHTML = '';
+            if (data.alerts.length === 0) {
+                alertsList.innerHTML = '<div class="no-data">No recent alerts</div>';
+            } else {
+                data.alerts.slice(-10).reverse().forEach(alert => {
+                    addAlert(alert);
+                });
+            }
+        });
+
+        socket.on('sensor_update', function(data) {
+            console.log('Sensor update:', data);
+            updateZoneCard(data.zone, data.data);
+            updateStats(data.stats);
+            
+            // Update chart with new data
+            console.log('Updating chart for zone:', data.zone, 'with temp:', data.data.temperature_celsius);
+            updateChart(data.zone, data.data);
+        });
+
+        socket.on('new_alert', function(alert) {
+            console.log('New alert:', alert);
+            addAlert(alert);
+            
+            // Update active alerts count
+            const alertsCount = document.querySelectorAll('.alert-item').length;
+            document.getElementById('activeAlerts').textContent = alertsCount;
+        });
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded - Initializing dashboard');
+            
+            // Initialize chart
+            initChart();
+            
+            // Request initial data
+            socket.emit('request_data');
+            
+            // Set up periodic data refresh - FASTER
+            setInterval(() => {
+                socket.emit('request_data');
+            }, 10000); // Refresh every 10 seconds instead of 30
+            
+            console.log('Dashboard initialization complete');
+        });
+
+        // Handle page visibility change
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                socket.emit('request_data');
+            }
+        });
+    </script>
+</body>
+</html>

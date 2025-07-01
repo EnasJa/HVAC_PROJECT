@@ -1,0 +1,11 @@
+# HVAC IoT Monitoring System - .gitignore
+
+# Security - AWS Certificates (NEVER commit these!)
+certificates/
+*.pem
+*.crt
+*.key
+*.p12
+*.pfx
+# Python
+__pycache__/
